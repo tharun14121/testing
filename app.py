@@ -1,36 +1,48 @@
 import os
-import urllib.request
+import requests
 import numpy as np
 import streamlit as st
 from PIL import Image
-import tensorflow as tf
 from tensorflow.keras.models import load_model
 
 # =========================================================
-# STREAMLIT CONFIG
+# CONFIG
 # =========================================================
-st.set_page_config(
-    page_title="Brain Tumor Detection",
-    layout="centered"
-)
+st.set_page_config(page_title="Brain Tumor Detection", layout="centered")
+st.title("🧠 Brain Tumor Detection")
+st.write("Upload an MRI image to detect tumor presence.")
 
-st.title("🧠 Brain Tumor Detection App")
-st.write("Upload an MRI image to detect the presence of a brain tumor.")
+IMAGE_SIZE = 224
+CLASS_NAMES = ["No Tumor", "Tumor"]
 
-# =========================================================
-# MODEL CONFIG
-# =========================================================
 MODEL_DIR = "models"
 MODEL_PATH = os.path.join(MODEL_DIR, "brain_tumor_model.keras")
 
-# ⚠️ IMPORTANT:
-# This must be a *direct download* Google Drive link
-# Format:
-# https://drive.google.com/uc?id=FILE_ID
-MODEL_URL = "https://drive.google.com/uc?id=YOUR_MODEL_FILE_ID"
+# 👇 YOUR FILE ID (FROM GOOGLE DRIVE)
+FILE_ID = "1-gv3CuubtN9QxOO81o__j0z3y_yZimTZ"
 
-CLASS_NAMES = ["No Tumor", "Tumor"]
-IMAGE_SIZE = 224
+# =========================================================
+# GOOGLE DRIVE SAFE DOWNLOAD
+# =========================================================
+def download_from_gdrive(file_id, destination):
+    URL = "https://drive.google.com/uc?export=download"
+    session = requests.Session()
+
+    response = session.get(URL, params={"id": file_id}, stream=True)
+    token = None
+
+    for key, value in response.cookies.items():
+        if key.startswith("download_warning"):
+            token = value
+
+    if token:
+        params = {"id": file_id, "confirm": token}
+        response = session.get(URL, params=params, stream=True)
+
+    with open(destination, "wb") as f:
+        for chunk in response.iter_content(32768):
+            if chunk:
+                f.write(chunk)
 
 # =========================================================
 # LOAD MODEL (CACHED)
@@ -40,8 +52,8 @@ def load_trained_model():
     os.makedirs(MODEL_DIR, exist_ok=True)
 
     if not os.path.exists(MODEL_PATH):
-        st.info("⬇️ Downloading trained model (first time only)...")
-        urllib.request.urlretrieve(MODEL_URL, MODEL_PATH)
+        st.info("⬇️ Downloading trained model (one-time)...")
+        download_from_gdrive(FILE_ID, MODEL_PATH)
 
     return load_model(MODEL_PATH)
 
@@ -50,7 +62,7 @@ model = load_trained_model()
 # =========================================================
 # IMAGE PREPROCESSING
 # =========================================================
-def preprocess_image(img: Image.Image):
+def preprocess_image(img):
     img = img.convert("RGB")
     img = img.resize((IMAGE_SIZE, IMAGE_SIZE))
     img = np.array(img) / 255.0
@@ -58,24 +70,24 @@ def preprocess_image(img: Image.Image):
     return img
 
 # =========================================================
-# FILE UPLOAD
+# UI
 # =========================================================
 uploaded_file = st.file_uploader(
     "Upload MRI Image",
     type=["jpg", "jpeg", "png"]
 )
 
-if uploaded_file is not None:
+if uploaded_file:
     image = Image.open(uploaded_file)
-    st.image(image, caption="Uploaded MRI Image", use_column_width=True)
+    st.image(image, caption="Uploaded MRI", use_column_width=True)
 
-    if st.button("🔍 Predict"):
-        with st.spinner("Analyzing image..."):
-            processed_img = preprocess_image(image)
-            prediction = model.predict(processed_img)[0]
+    if st.button("Predict"):
+        with st.spinner("Analyzing..."):
+            img = preprocess_image(image)
+            pred = model.predict(img)[0]
 
-            pred_index = np.argmax(prediction)
-            confidence = prediction[pred_index] * 100
+        idx = np.argmax(pred)
+        confidence = pred[idx] * 100
 
-        st.success(f"🧪 Prediction: **{CLASS_NAMES[pred_index]}**")
-        st.info(f"📊 Confidence: **{confidence:.2f}%**")
+        st.success(f"Prediction: **{CLASS_NAMES[idx]}**")
+        st.info(f"Confidence: **{confidence:.2f}%**")
