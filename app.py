@@ -1,86 +1,46 @@
 import os
-import requests
+import urllib.request
 import numpy as np
 import streamlit as st
 from PIL import Image
 from tensorflow.keras.models import load_model
 
-# =========================================================
-# PAGE CONFIG
-# =========================================================
+# ======================================================
+# CONFIG
+# ======================================================
 st.set_page_config(page_title="Brain Tumor Detection", layout="centered")
 st.title("🧠 Brain Tumor Detection")
 st.write("Upload an MRI image to detect tumor presence.")
 
-# =========================================================
-# CONSTANTS
-# =========================================================
 IMAGE_SIZE = 224
 CLASS_NAMES = ["glioma", "meningioma", "notumor", "pituitary"]
 
 MODEL_DIR = "models"
 MODEL_PATH = os.path.join(MODEL_DIR, "brain_tumor_model_streamlit.keras")
 
+# Your NEW working model file ID
 FILE_ID = "10gibKS6bEC5xIG6CquvuP_9vhk2dsp4p"
-MIN_EXPECTED_SIZE_MB = 30  # model is ~58 MB
 
-# =========================================================
-# GOOGLE DRIVE SAFE DOWNLOAD
-# =========================================================
-def download_from_gdrive(file_id, destination):
-    URL = "https://drive.google.com/uc?export=download"
-    session = requests.Session()
+MODEL_URL = f"https://drive.google.com/uc?id={FILE_ID}"
 
-    response = session.get(URL, params={"id": file_id}, stream=True)
-
-    token = None
-    for key, value in response.cookies.items():
-        if key.startswith("download_warning"):
-            token = value
-
-    if token:
-        response = session.get(
-            URL,
-            params={"id": file_id, "confirm": token},
-            stream=True
-        )
-
-    with open(destination, "wb") as f:
-        for chunk in response.iter_content(32768):
-            if chunk:
-                f.write(chunk)
-
-# =========================================================
-# LOAD MODEL (CACHED + VERIFIED)
-# =========================================================
+# ======================================================
+# LOAD MODEL (SIMPLE)
+# ======================================================
 @st.cache_resource
 def load_trained_model():
     os.makedirs(MODEL_DIR, exist_ok=True)
 
-    # Remove corrupted file if exists
-    if os.path.exists(MODEL_PATH):
-        size_mb = os.path.getsize(MODEL_PATH) / (1024 * 1024)
-        if size_mb < MIN_EXPECTED_SIZE_MB:
-            os.remove(MODEL_PATH)
-
     if not os.path.exists(MODEL_PATH):
-        st.info("⬇️ Downloading trained model (one-time)...")
-        download_from_gdrive(FILE_ID, MODEL_PATH)
-
-    size_mb = os.path.getsize(MODEL_PATH) / (1024 * 1024)
-    st.write(f"Model file size: {size_mb:.2f} MB")
-
-    if size_mb < MIN_EXPECTED_SIZE_MB:
-        st.error("❌ Model download failed (file too small).")
-        st.stop()
+        st.info("⬇️ Downloading model...")
+        urllib.request.urlretrieve(MODEL_URL, MODEL_PATH)
 
     return load_model(MODEL_PATH)
 
 model = load_trained_model()
 
-# =========================================================
+# ======================================================
 # IMAGE PREPROCESSING
-# =========================================================
+# ======================================================
 def preprocess_image(img):
     img = img.convert("RGB")
     img = img.resize((IMAGE_SIZE, IMAGE_SIZE))
@@ -88,9 +48,9 @@ def preprocess_image(img):
     img = np.expand_dims(img, axis=0)
     return img
 
-# =========================================================
+# ======================================================
 # UI
-# =========================================================
+# ======================================================
 uploaded_file = st.file_uploader(
     "Upload MRI Image",
     type=["jpg", "jpeg", "png"]
@@ -101,7 +61,7 @@ if uploaded_file:
     st.image(image, caption="Uploaded MRI", use_column_width=True)
 
     if st.button("Predict"):
-        with st.spinner("Analyzing..."):
+        with st.spinner("Analyzing image..."):
             img = preprocess_image(image)
             preds = model.predict(img)[0]
 
