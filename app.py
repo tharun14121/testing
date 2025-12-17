@@ -18,7 +18,7 @@ CLASS_NAMES = ["glioma", "meningioma", "notumor", "pituitary"]
 MODEL_DIR = "models"
 MODEL_PATH = os.path.join(MODEL_DIR, "brain_tumor_model.keras")
 
-FILE_ID = "1-gv3CuubtN9QxOO81o__j0z3y_yZimTZ"
+FILE_ID = "10gibKS6bEC5xIG6CquvuP_9vhk2dsp4p"
 MIN_EXPECTED_SIZE_MB = 50  # sanity check
 
 # =========================================================
