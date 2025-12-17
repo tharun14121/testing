@@ -13,16 +13,16 @@ st.title("🧠 Brain Tumor Detection")
 st.write("Upload an MRI image to detect tumor presence.")
 
 IMAGE_SIZE = 224
-CLASS_NAMES = ["No Tumor", "Tumor"]
+CLASS_NAMES = ["glioma", "meningioma", "notumor", "pituitary"]
 
 MODEL_DIR = "models"
 MODEL_PATH = os.path.join(MODEL_DIR, "brain_tumor_model.keras")
 
-# 👇 YOUR FILE ID (FROM GOOGLE DRIVE)
 FILE_ID = "1-gv3CuubtN9QxOO81o__j0z3y_yZimTZ"
+MIN_EXPECTED_SIZE_MB = 50  # sanity check
 
 # =========================================================
-# GOOGLE DRIVE SAFE DOWNLOAD
+# GOOGLE DRIVE DOWNLOAD (ROBUST)
 # =========================================================
 def download_from_gdrive(file_id, destination):
     URL = "https://drive.google.com/uc?export=download"
@@ -36,8 +36,11 @@ def download_from_gdrive(file_id, destination):
             token = value
 
     if token:
-        params = {"id": file_id, "confirm": token}
-        response = session.get(URL, params=params, stream=True)
+        response = session.get(
+            URL,
+            params={"id": file_id, "confirm": token},
+            stream=True
+        )
 
     with open(destination, "wb") as f:
         for chunk in response.iter_content(32768):
@@ -45,15 +48,25 @@ def download_from_gdrive(file_id, destination):
                 f.write(chunk)
 
 # =========================================================
-# LOAD MODEL (CACHED)
+# LOAD MODEL (CACHED + VERIFIED)
 # =========================================================
 @st.cache_resource
 def load_trained_model():
     os.makedirs(MODEL_DIR, exist_ok=True)
 
+    if os.path.exists(MODEL_PATH):
+        size_mb = os.path.getsize(MODEL_PATH) / (1024 * 1024)
+        if size_mb < MIN_EXPECTED_SIZE_MB:
+            os.remove(MODEL_PATH)  # delete corrupted file
+
     if not os.path.exists(MODEL_PATH):
         st.info("⬇️ Downloading trained model (one-time)...")
         download_from_gdrive(FILE_ID, MODEL_PATH)
+
+    size_mb = os.path.getsize(MODEL_PATH) / (1024 * 1024)
+    if size_mb < MIN_EXPECTED_SIZE_MB:
+        st.error("❌ Model download failed (file too small).")
+        st.stop()
 
     return load_model(MODEL_PATH)
 
@@ -84,10 +97,12 @@ if uploaded_file:
     if st.button("Predict"):
         with st.spinner("Analyzing..."):
             img = preprocess_image(image)
-            pred = model.predict(img)[0]
+            preds = model.predict(img)[0]
 
-        idx = np.argmax(pred)
-        confidence = pred[idx] * 100
+        idx = int(np.argmax(preds))
+        confidence = preds[idx] * 100
 
-        st.success(f"Prediction: **{CLASS_NAMES[idx]}**")
-        st.info(f"Confidence: **{confidence:.2f}%**")
+        if CLASS_NAMES[idx] == "notumor":
+            st.success(f"✅ No Tumor ({confidence:.2f}%)")
+        else:
+            st.error(f"⚠️ Tumor Detected: {CLASS_NAMES[idx]} ({confidence:.2f}%)")
